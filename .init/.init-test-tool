@@ -1,0 +1,4 @@
+{
+    "command": "pytest",
+    "working_directory": "/home/kavia/workspace/code-generation/taskflow-96076-4ab0e4a2/task_manager_backend"
+}
