@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, asc, desc
 from typing import List, Optional
 from datetime import datetime
-
 from .models import (
     SessionLocal,
     Task,
@@ -163,6 +162,55 @@ def get_task(
 
 
 # PUBLIC_INTERFACE
+@router.patch(
+    "/{task_id}/status",
+    response_model=TaskRead,
+    summary="Partially update task status (mark as completed, pending, etc.)",
+    description=(
+        "Partially update ONLY the status of the specified task for the authenticated user. "
+        "Can be used to mark completed, revert to pending, etc. "
+        "Task must belong to current user."
+    ),
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {"description": "Task status updated"},
+        404: {"description": "Task not found"},
+        400: {"description": "Invalid status value"},
+    },
+)
+def update_task_status(
+    task_id: int,
+    status_update: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Partially update ONLY the status field of the specified task for the authenticated user.
+
+    - **task_id**: ID of the task whose status is to be updated
+    - **status_update**: JSON body containing {"status": "new_status"}
+
+    Returns the updated Task object.
+    """
+    if "status" not in status_update:
+        raise HTTPException(status_code=400, detail="Missing status in payload")
+    new_status = status_update["status"]
+    if not isinstance(new_status, str) or not new_status:
+        raise HTTPException(status_code=400, detail="Invalid status value")
+    task = (
+        db.query(Task)
+        .filter(Task.id == task_id, Task.owner_id == current_user.id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.status = new_status
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+# PUBLIC_INTERFACE
 @router.put(
     "/{task_id}",
     response_model=TaskRead,
@@ -174,7 +222,7 @@ def update_task(
     task_id: int,
     task_update: TaskUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Update a task by ID for the current user."""
     task = (
@@ -204,7 +252,7 @@ def update_task(
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Delete a task by ID for the current user."""
     task = (
@@ -217,4 +265,3 @@ def delete_task(
     db.delete(task)
     db.commit()
     return {"detail": "Task deleted"}
-
