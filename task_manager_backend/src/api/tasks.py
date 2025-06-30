@@ -73,13 +73,21 @@ def create_task(
     ),
 )
 def list_and_search_tasks(
-    query: Optional[str] = Query(None, description="Text to search in title or description"),
-    status: Optional[str] = Query(None, description="Status to filter by (e.g. 'pending', 'completed')"),
+    query: Optional[str] = Query(
+        None,
+        description="Text to search in title or description"
+    ),
+    status: Optional[str] = Query(
+        None,
+        description="Status to filter by (e.g. 'pending', 'completed')"
+    ),
     deadline_before: Optional[datetime] = Query(
-        None, description="Only tasks with deadline before this datetime"
+        None,
+        description="Only tasks with deadline before this datetime"
     ),
     deadline_after: Optional[datetime] = Query(
-        None, description="Only tasks with deadline after this datetime"
+        None,
+        description="Only tasks with deadline after this datetime"
     ),
     sort_by: Optional[str] = Query(
         "created_at",
@@ -124,11 +132,11 @@ def list_and_search_tasks(
         q = q.filter(Task.deadline.isnot(None), Task.deadline >= deadline_after)
 
     # Sorting
-    sort_by = (
-        sort_by if sort_by in {"created_at", "updated_at", "deadline", "title", "status"}
-        else "created_at"
-    )
-    sort_field = getattr(Task, sort_by)
+    sort_by_allowed = {"created_at", "updated_at", "deadline", "title", "status"}
+    if sort_by in sort_by_allowed:
+        sort_field = getattr(Task, sort_by)
+    else:
+        sort_field = Task.created_at
     if sort_order == "asc":
         q = q.order_by(asc(sort_field))
     else:

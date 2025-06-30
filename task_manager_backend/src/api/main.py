@@ -1,6 +1,9 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import Any
@@ -13,15 +16,80 @@ app = FastAPI(
     title="Task Manager Backend",
     description="Backend RESTful APIs for task and user management, including authentication.",
     version="1.0.0",
+    contact={
+        "name": "Task Manager Backend Team",
+        "email": "support@example.com",
+    },
+    summary="API for managing users and tasks with authentication and robust error responses."
 )
 
+# CORS configuration for cross-origin frontend integration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Change in production for security
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom error handling for common errors and improved OpenAPI docs
+
+
+@app.exception_handler(HTTPException)
+async def custom_http_exception_handler(request: Request, exc: HTTPException):
+    """Return HTTP errors in a consistent JSON structure with detail and code."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "code": exc.status_code,
+            "type": "HTTPException",
+            "path": str(request.url)
+        },
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle Starlette-based HTTPExceptions."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "code": exc.status_code,
+            "type": "HTTPException",
+            "path": str(request.url)
+        },
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle pydantic validation errors for request bodies and query parameters."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "Validation error",
+            "code": 422,
+            "type": "ValidationError",
+            "path": str(request.url),
+            "details": exc.errors()
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Generic error catch-all for uncaught/unknown exceptions."""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "code": 500,
+            "type": type(exc).__name__,
+            "path": str(request.url)
+        },
+    )
 
 
 # Utility dependency to get a new DB session
@@ -35,11 +103,19 @@ def get_db():
 
 @app.on_event("startup")
 def on_startup():
+    """Initializes the database schema."""
     init_db()
 
 
-@app.get("/", tags=["health"])
+@app.get(
+    "/",
+    tags=["health"],
+    summary="Health check endpoint",
+    description="Check health status to confirm backend is running.",
+    response_description="Service health response."
+)
 def health_check():
+    """Returns basic health check message."""
     return {"message": "Healthy"}
 
 
@@ -61,12 +137,19 @@ class Token(BaseModel):
     tags=["auth"],
     response_model=UserRead,
     status_code=201,
+    response_description="The registered user's information.",
+    responses={
+        201: {"description": "User successfully registered", "model": UserRead},
+        400: {"description": "Username already registered"},
+        422: {"description": "Validation error"},
+    },
 )
 def register(user_create: UserCreate, db: Session = Depends(get_db)) -> Any:
     """
     Registers a new user with unique username and a securely hashed password.
     - **username**: Unique username for the new account.
     - **password**: Desired password (minimum 6 chars recommended).
+    Returns the created user.
     """
     existing = db.query(User).filter(User.username == user_create.username).first()
     if existing:
@@ -92,6 +175,12 @@ def register(user_create: UserCreate, db: Session = Depends(get_db)) -> Any:
     summary="Authenticate and get JWT access token",
     tags=["auth"],
     response_model=Token,
+    response_description="JWT token for authenticated access",
+    responses={
+        200: {"description": "Successful login and JWT retrieval", "model": Token},
+        401: {"description": "Incorrect username or password"},
+        422: {"description": "Validation error"},
+    },
 )
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
