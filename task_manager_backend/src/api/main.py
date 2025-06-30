@@ -7,6 +7,7 @@ from typing import Any
 
 from .models import init_db, SessionLocal, User, UserCreate, UserRead
 from .auth import get_password_hash, create_access_token, authenticate_user
+from .tasks import router as tasks_router
 
 app = FastAPI(
     title="Task Manager Backend",
@@ -43,6 +44,9 @@ def health_check():
 
 
 # --- AUTH ROUTES ---
+
+
+app.include_router(tasks_router)
 
 
 class Token(BaseModel):
